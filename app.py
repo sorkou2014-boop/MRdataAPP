@@ -1,18 +1,66 @@
 import streamlit as st
+from streamlit_oauth import OAuth2Component
 import pandas as pd
 import io
 import re
 from datetime import datetime
 
-# 🌟 設定網頁標題與大版面
-st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
+# 🌟 設定網頁標題與大版面 (必須在程式碼最頂端)
+st.set_page_config(page_title="鐵道設備檢修分析系統", layout="wide")
 
-st.title("🚂 MRdataAPP")
+# ==========================================
+# 🔐 企業級 Google SSO 登入系統
+# ==========================================
+# 從 Streamlit 雲端保險箱安全讀取金鑰
+CLIENT_ID = st.secrets["google_oauth"]["client_id"]
+CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
+REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+
+AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
+
+# 建立驗證物件
+oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
+
+# 檢查使用者是否已經登入 (有沒有取得 token)
+if "token" not in st.session_state:
+    st.title("🚂 鐵道設備檢修資料分析系統")
+    st.warning("🔒 本系統為內部專用，請使用已授權的 Google 帳號登入。")
+    
+    # 產生 Google 登入按鈕
+    result = oauth2.authorize_button(
+        name="使用 Google 帳號登入",
+        icon="https://www.google.com.tw/favicon.ico",
+        redirect_uri=REDIRECT_URI,
+        scope="openid email profile"
+    )
+    
+    if result and "token" in result:
+        # 登入成功，將憑證存入網頁記憶體並重新整理畫面
+        st.session_state.token = result.get("token")
+        st.rerun()
+else:
+    # ===== 登入成功後才會顯示的畫面 =====
+    col1, col2 = st.columns([8, 2])
+    with col1:
+        st.success("✅ 身分驗證成功，歡迎使用系統！")
+    with col2:
+        if st.button("🚪 登出系統"):
+            del st.session_state.token
+            st.rerun()
+            
+    st.divider()
+
+# 🌟 設定網頁標題與大版面
+st.set_page_config(page_title="MRdataAPP", layout="wide")
+
+st.title("🚂 月報數據自動化整理器")
 st.markdown("請上傳從行動撿些平台系統下載的 Excel 原始表單，系統將自動提取、運算並產生分析總表。")
 
 # 🌟 網頁左側設定區
-st.sidebar.header("⚙️ 系統設定")
-st.sidebar.info("請在主畫面拖曳上傳檔案")
+st.sidebar.header("⚙️ 其他")
+st.sidebar.info("輪徑資料提取功能-最小值、單軸輪徑比較")
 
 # 🌟 檔案上傳區 (取代原本的 Google Drive 路徑)
 uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
