@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 
 # 🌟 設定網頁標題與大版面 (必須在程式碼最頂端)
-st.set_page_config(page_title="鐵道設備檢修分析系統", layout="wide")
+st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
 
 # ==========================================
 # 🔐 企業級 Google SSO 登入系統
@@ -25,8 +25,8 @@ oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REV
 
 # 檢查使用者是否已經登入 (有沒有取得 token)
 if "token" not in st.session_state:
-    st.title("🚂 鐵道設備檢修資料分析系統")
-    st.warning("🔒 本系統為內部專用，請使用已授權的 Google 帳號登入。")
+    st.title("🚂 月報數據自動化整理器")
+    st.warning("🔒 本系統需授權使用(請洽開發者)，請使用已授權的 Google 帳號登入。")
     
     # 產生 Google 登入按鈕
     result = oauth2.authorize_button(
