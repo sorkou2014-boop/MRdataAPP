@@ -1,62 +1,42 @@
 import streamlit as st
-from streamlit_oauth import OAuth2Component
+# from streamlit_oauth import OAuth2Component  <-- 加上 # 暫時停用
 import pandas as pd
 import io
 import re
 from datetime import datetime
 
-# 🌟 1. 設定網頁標題與大版面 (全程式只能有一次，且必須在最頂端)
+# 🌟 1. 設定網頁標題與大版面
 st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
 
 # ==========================================
-# 🔐 企業級 Google SSO 登入系統
+# 🔐 企業級 Google SSO 登入系統 (在 Colab 測試時暫時關閉)
 # ==========================================
-# 從 Streamlit 雲端保險箱安全讀取金鑰
-CLIENT_ID = st.secrets["google_oauth"]["client_id"]
-CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
-REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+# CLIENT_ID = st.secrets["google_oauth"]["client_id"]
+# CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
+# REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+# AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+# TOKEN_URL = "https://oauth2.googleapis.com/token"
+# REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
 
-AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
+# oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
 
-# 建立驗證物件
-oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
+# if "token" not in st.session_state:
+#     st.title("🚂 月報數據自動化整理器")
+#     st.warning("🔒 本系統需授權使用(請洽開發者)，請使用已授權的 Google 帳號登入。")
+#     result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
+#     if result and "token" in result:
+#         st.session_state.token = result.get("token")
+#         st.rerun()
+#     st.stop()
 
-# 檢查使用者是否已經登入
-if "token" not in st.session_state:
-    st.title("🚂 月報數據自動化整理器")
-    st.warning("🔒 本系統需授權使用(請洽開發者)，請使用已授權的 Google 帳號登入。")
-    
-    # 產生 Google 登入按鈕
-    result = oauth2.authorize_button(
-        name="使用 Google 帳號登入",
-        icon="https://www.google.com.tw/favicon.ico",
-        redirect_uri=REDIRECT_URI,
-        scope="openid email profile"
-    )
-    
-    if result and "token" in result:
-        st.session_state.token = result.get("token")
-        st.rerun()
-    
-    # 🛑 關鍵：沒登入就強制停止執行後面的程式碼
-    st.stop()
-
-# ==========================================
-# 👇 登入成功後才會顯示的內容 (只有通過上面的門禁才會執行到這裡)
-# ==========================================
-
-# 🌟 頂部狀態欄：顯示歡迎詞與登出按鈕
-status_col, logout_col = st.columns([8, 2])
-with status_col:
-    st.success("✅ 身分驗證成功，歡迎使用系統！")
-with logout_col:
-    if st.button("🚪 登出系統"):
-        del st.session_state.token
-        st.rerun()
-
-st.divider()
+# status_col, logout_col = st.columns([8, 2])
+# with status_col:
+#     st.success("✅ 身分驗證成功，歡迎使用系統！")
+# with logout_col:
+#     if st.button("🚪 登出系統"):
+#         del st.session_state.token
+#         st.rerun()
+# st.divider()
 
 # 🌟 主頁面標題
 st.title("📊 月報數據自動化分析")
@@ -64,10 +44,10 @@ st.markdown("請上傳從行動檢修平台下載的 Excel 原始表單，系統
 
 # 🌟 側邊欄資訊
 st.sidebar.header("⚙️ 系統資訊")
-st.sidebar.info("功能：輪徑資料提取、最小值計算、單軸輪徑比較")
+st.sidebar.info("功能：輪徑資料提取、輪徑最小值計算、單軸輪徑比較")
 
 # 🌟 檔案上傳區
-uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案 (支援 371/381 型)", type=["xlsx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
 
 # --- 資料處理引擎 (不變) ---
 def process_data(results_list):
