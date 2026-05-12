@@ -4,9 +4,10 @@ import pandas as pd
 import io
 import re
 from datetime import datetime
+import plotly.express as px # 🌟 新增：繪圖套件
 
 # 🌟 1. 設定網頁標題與大版面
-st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
+st.set_page_config(page_title="月報數據自動化提取", layout="wide")
 
 # ==========================================
 # 🔐 企業級 Google SSO 登入系統 (在 Colab 測試時暫時關閉)
@@ -21,7 +22,7 @@ st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
 # oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
 
 # if "token" not in st.session_state:
-#     st.title("🚂 月報數據自動化整理器")
+#     st.title("🚂 月報數據自動化提取")
 #     st.warning("🔒 本系統需授權使用(請洽開發者)，請使用已授權的 Google 帳號登入。")
 #     result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
 #     if result and "token" in result:
@@ -39,17 +40,17 @@ st.set_page_config(page_title="月報數據自動化整理器", layout="wide")
 # st.divider()
 
 # 🌟 主頁面標題
-st.title("📊 月報數據自動化分析")
-st.markdown("請上傳從行動檢修平台下載的 Excel 原始表單，系統將自動提取、運算並產生分析總表。")
+st.title("📊 月報數據自動化提取")
+st.markdown("請上傳從行動檢修平台下載的 Excel 原始表單，系統將自動提取、運算並產生提取總表。")
 
 # 🌟 側邊欄資訊
 st.sidebar.header("⚙️ 系統資訊")
-st.sidebar.info("功能：輪徑資料提取、輪徑最小值計算、單軸輪徑比較")
+st.sidebar.info("功能：輪徑資料提取、輪徑最小值計算(含圖表產出)、單軸輪徑比較")
 
 # 🌟 檔案上傳區
 uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
 
-# --- 資料處理引擎 (不變) ---
+# --- 資料處理引擎 ---
 def process_data(results_list):
     if not results_list:
         return None
@@ -97,9 +98,44 @@ def process_data(results_list):
     sorted_dynamic_cols = sorted(dynamic_cols, key=custom_sort_logic)
     return df[exist_base_cols + sorted_dynamic_cols]
 
+
+# --- 🌟 新增：生成最小輪徑互動長條圖 Function ---
+def create_min_wheel_chart(df, model_name):
+    if df is None or '車號' not in df.columns or '本車最小輪徑' not in df.columns:
+        return None
+
+    # 確保資料為數值並過濾掉空值
+    df['本車最小輪徑'] = pd.to_numeric(df['本車最小輪徑'], errors='coerce')
+    df_plot = df.dropna(subset=['本車最小輪徑'])
+
+    if df_plot.empty:
+        return None
+
+    # 建立長條圖
+    fig = px.bar(df_plot, 
+                 x='車號', 
+                 y='本車最小輪徑', 
+                 title=f"{model_name} 電聯車輪徑值",
+                 labels={'本車最小輪徑': '輪徑單位:mm', '車號': '車組編號'},
+                 text_auto='.1f')
+
+    # 設定 Y 軸範圍 (770~850)
+    fig.update_yaxes(range=[770, 850])
+
+    # 新增三條對照標準線 (對齊你的報告截圖標準)
+    fig.add_hline(y=788, line_dash="dash", line_color="green", annotation_text="綠燈等級 (788mm)", annotation_position="top left")
+    fig.add_hline(y=782, line_dash="dash", line_color="orange", annotation_text="黃燈等級 (782mm)", annotation_position="top left")
+    fig.add_hline(y=775, line_dash="dash", line_color="red", annotation_text="紅燈等級 (775mm)", annotation_position="top left")
+
+    # 優化 X 軸顯示
+    fig.update_layout(xaxis_type='category', xaxis_tickangle=-45)
+
+    return fig
+
+
 # --- 執行邏輯 ---
 if uploaded_files:
-    if st.button("🚀 開始分析資料"):
+    if st.button("🚀 開始提取資料"):
         with st.spinner('資料提取中...'):
             results_371, results_381 = [], []
             progress_bar = st.progress(0)
@@ -142,15 +178,21 @@ if uploaded_files:
             for model_name, data in [("371型", results_371), ("381型", results_381)]:
                 res_df = process_data(data)
                 if res_df is not None:
-                    st.subheader(f"📊 {model_name} 分析結果預覽")
+                    st.subheader(f"📊 {model_name} 提取結果預覽")
                     st.dataframe(res_df)
                     
                     buf = io.BytesIO()
                     res_df.to_excel(buf, index=False)
                     st.download_button(
-                        label=f"📥 下載 {model_name} 輪徑分析表",
+                        label=f"📥 下載 {model_name} 輪徑提取表",
                         data=buf.getvalue(),
-                        file_name=f"{model_name}_分析結果_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        file_name=f"{model_name}_提取結果_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.ms-excel"
                     )
+
+                    # 🌟 新增：在下載按鈕下方顯示圖表
+                    fig = create_min_wheel_chart(res_df, model_name)
+                    if fig:
+                        st.plotly_chart(fig, use_container_width=True)
+
             st.success("✅ 所有檔案處理完成！")

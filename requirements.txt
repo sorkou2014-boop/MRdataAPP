@@ -3,3 +3,4 @@ pandas
 openpyxl
 python-calamine
 streamlit-oauth
+plotly
