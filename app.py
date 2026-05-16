@@ -1,66 +1,47 @@
 import streamlit as st
-# from streamlit_oauth import OAuth2Component  <-- 加上 # 暫時停用
+# from streamlit_oauth import OAuth2Component  <-- 暫時停用
 import pandas as pd
 import io
 import re
+import time # 新增：用來計算處理秒數
 from datetime import datetime
-import plotly.express as px # 🌟 新增：繪圖套件
+import plotly.express as px 
 
 # 🌟 1. 設定網頁標題與大版面
 st.set_page_config(page_title="月報數據自動化提取", layout="wide")
 
 # ==========================================
-# 🔐 企業級 Google SSO 登入系統 (在 Colab 測試時暫時關閉)
+# 🎛️ 未來擴充：側邊欄系統模式切換
 # ==========================================
-# CLIENT_ID = st.secrets["google_oauth"]["client_id"]
-# CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
-# REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
-# AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
-# TOKEN_URL = "https://oauth2.googleapis.com/token"
-# REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
+st.sidebar.header("⚙️ 系統模式切換")
+app_mode = st.sidebar.radio("請選擇作業模式", ["🔍 預檢輪徑提取", "🛠️ 其他資料提取 (開發中)"])
 
-# oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
+st.sidebar.divider()
+st.sidebar.info("📌 目前功能：\n1. 輪徑資料與檢修里程提取\n2. 輪徑最小值與佔比計算\n3. 3x4 結構化報表產出")
 
-# if "token" not in st.session_state:
-#     st.title("🚂 月報數據自動化提取")
-#     st.warning("🔒 本系統需授權使用(請洽開發者)，請使用已授權的 Google 帳號登入。")
-#     result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
-#     if result and "token" in result:
-#         st.session_state.token = result.get("token")
-#         st.rerun()
-#     st.stop()
+# 如果選擇未開發功能，直接擋下
+if app_mode == "🛠️ 其他資料提取 (開發中)":
+    st.title("🛠️ 其他資料提取系統")
+    st.info("🚧 此模組正在開發中，將串接不同的來源資料，敬請期待！")
+    st.stop()
 
-# status_col, logout_col = st.columns([8, 2])
-# with status_col:
-#     st.success("✅ 身分驗證成功，歡迎使用系統！")
-# with logout_col:
-#     if st.button("🚪 登出系統"):
-#         del st.session_state.token
-#         st.rerun()
-# st.divider()
-
-# 🌟 主頁面標題
-st.title("📊 月報數據自動化提取")
-st.markdown("請上傳從行動檢修平台下載ISO表單( Excel) 原始表單，系統將自動提取、運算並產生提取總表。")
-
-# 🌟 側邊欄資訊
-st.sidebar.header("⚙️ 系統資訊")
-st.sidebar.info("功能：輪徑資料提取、輪徑最小值計算(含圖表產出)、單軸輪徑比較")
+# ==========================================
+# 👇 預檢輪徑提取 系統主程式
+# ==========================================
+st.title("📊 月報數據自動化提取 (預檢輪徑提取)")
+st.markdown("請上傳從行動檢修平台下載的 ISO 表單 (Excel)，系統將自動提取、運算並產生 3x4 結構化提取總表。")
 
 # 🌟 檔案上傳區
 uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
 
-# --- 資料處理引擎 ---
+# --- 資料處理引擎 (底層維持 1列 方便運算) ---
 def process_data(results_list):
-    if not results_list:
-        return None
-
+    if not results_list: return None
     df = pd.DataFrame(results_list)
     wheel_cols = [col for col in df.columns if any(x in col for x in ['A1', 'B1', 'A2', 'B2', 'A3', 'B3', 'A4', 'B4'])]
 
     if wheel_cols:
         df['本車最小輪徑'] = df[wheel_cols].min(axis=1)
-
         def get_clean_car_name(col_name):
             if 'DM1' in col_name: return 'DM1'
             elif 'DM2' in col_name or 'M2' in col_name: return 'M2_DM2'
@@ -73,97 +54,136 @@ def process_data(results_list):
             elif 'A2' in col: axis_name, b_col = "軸2", col.replace('A2', 'B2')
             elif 'A3' in col: axis_name, b_col = "軸3", col.replace('A3', 'B3')
             elif 'A4' in col: axis_name, b_col = "軸4", col.replace('A4', 'B4')
-
             if axis_name and b_col in df.columns:
                 clean_car = get_clean_car_name(col)
                 min_col = f"{clean_car}_{axis_name}"
                 temp_min = df[[col, b_col]].min(axis=1)
                 df[min_col] = df[min_col].combine_first(temp_min) if min_col in df.columns else temp_min
 
-    if '車號' in df.columns:
-        df = df.sort_values(by='車號', ascending=True)
+    if '車號' in df.columns: df = df.sort_values(by='車號', ascending=True)
+    return df
 
-    base_cols = ["車號", "工單編號", "工項名稱", "檢查結束日期"]
-    exist_base_cols = [c for c in base_cols if c in df.columns]
-    dynamic_cols = [c for c in df.columns if c not in exist_base_cols]
+# --- 🌟 新增：將 1列 資料變形為 3列4欄 結構 ---
+def transform_to_3_rows(df):
+    if df is None or df.empty: return df
+    new_rows = []
+    
+    for _, row in df.iterrows():
+        # 共用基本資訊
+        base = {
+            "車號": row.get("車號", ""),
+            "工單編號": row.get("工單編號", ""),
+            "工項名稱": row.get("工項名稱", ""),
+            "檢查結束日期": row.get("檢查結束日期", ""),
+            "檢修里程": row.get("檢修里程", ""),
+            "本車最小輪徑": row.get("本車最小輪徑", "")
+        }
+        
+        # 第 1 列：DM1
+        dm1 = base.copy()
+        dm1["車廂"] = "DM1"
+        dm1["軸1"], dm1["軸2"], dm1["軸3"], dm1["軸4"] = row.get("DM1_軸1", ""), row.get("DM1_軸2", ""), row.get("DM1_軸3", ""), row.get("DM1_軸4", "")
+        dm1[" "] = "" # 空白分隔欄
+        
+        # 第 2 列：T (為求報表乾淨，重複的資訊清空留白，保留車號防呆)
+        t = base.copy()
+        t["工單編號"] = t["工項名稱"] = t["檢查結束日期"] = t["檢修里程"] = t["本車最小輪徑"] = ""
+        t["車廂"] = "T"
+        t["軸1"], t["軸2"], t["軸3"], t["軸4"] = row.get("T_軸1", ""), row.get("T_軸2", ""), row.get("T_軸3", ""), row.get("T_軸4", "")
+        t[" "] = "" # 空白分隔欄
+        
+        # 第 3 列：M2/DM2 (同上留白)
+        m2 = base.copy()
+        m2["工單編號"] = m2["工項名稱"] = m2["檢查結束日期"] = m2["檢修里程"] = m2["本車最小輪徑"] = ""
+        m2["車廂"] = "M2_DM2"
+        m2["軸1"], m2["軸2"], m2["軸3"], m2["軸4"] = row.get("M2_DM2_軸1", ""), row.get("M2_DM2_軸2", ""), row.get("M2_DM2_軸3", ""), row.get("M2_DM2_軸4", "")
+        m2[" "] = "" # 空白分隔欄
 
-    def custom_sort_logic(col_name):
-        if '最小輪徑' in col_name: return (0, 0, 0, 0, col_name)
-        block_weight = 1 if '軸' in col_name else 2
-        car_weight = 1 if 'DM1' in col_name else 2 if 'T' in col_name else 3 if any(x in col_name for x in ['M2', 'DM2']) else 50
-        item_weight = int(re.search(r'\d', col_name[-2:]).group()) if re.search(r'\d', col_name[-2:]) else 50
-        ab_weight = 1 if 'B' in col_name else 0
-        return (block_weight, car_weight, item_weight, ab_weight, col_name)
+        # 處理其餘非軸的欄位 (例如 DM1車輪組C...)
+        for col in df.columns:
+            if col in base.keys() or any(x in col for x in ["_軸1", "_軸2", "_軸3", "_軸4"]): continue
+            if "DM1" in col: dm1[col] = row[col]
+            elif "T" in col: t[col] = row[col]
+            elif "M2" in col or "DM2" in col: m2[col] = row[col]
+            else: dm1[col] = row[col] # 無法分類的塞給第一行
+            
+        new_rows.extend([dm1, t, m2])
+        
+    new_df = pd.DataFrame(new_rows)
+    # 決定顯示順序：基本資料 -> 車廂 -> 4軸 -> 空白欄 -> 其他
+    front_cols = ["車號", "工單編號", "工項名稱", "檢查結束日期", "檢修里程", "車廂", "本車最小輪徑", "軸1", "軸2", "軸3", "軸4", " "]
+    exist_front = [c for c in front_cols if c in new_df.columns]
+    other_cols = [c for c in new_df.columns if c not in exist_front]
+    return new_df[exist_front + other_cols]
 
-    sorted_dynamic_cols = sorted(dynamic_cols, key=custom_sort_logic)
-    return df[exist_base_cols + sorted_dynamic_cols]
-
-
-# --- 🌟 新增：生成最小輪徑互動長條圖 Function ---
+# --- 🌟 新增：生成最小輪徑互動長條圖 (去除壓線文字、改為整數) ---
 def create_min_wheel_chart(df, model_name):
-    if df is None or '車號' not in df.columns or '本車最小輪徑' not in df.columns:
-        return None
-
-    # 確保資料為數值並過濾掉空值
     df['本車最小輪徑'] = pd.to_numeric(df['本車最小輪徑'], errors='coerce')
     df_plot = df.dropna(subset=['本車最小輪徑'])
+    if df_plot.empty: return None
 
-    if df_plot.empty:
-        return None
+    fig = px.bar(df_plot, x='車號', y='本車最小輪徑', title=f"{model_name} 電聯車輪徑值",
+                 labels={'本車最小輪徑': '輪徑單位:mm', '車號': '車組編號'}, 
+                 text_auto='.0f') # 🌟 優化 3.1: 強制整數無小數點
 
-    # 建立長條圖
-    fig = px.bar(df_plot, 
-                 x='車號', 
-                 y='本車最小輪徑', 
-                 title=f"{model_name} 電聯車輪徑值",
-                 labels={'本車最小輪徑': '輪徑單位:mm', '車號': '車組編號'},
-                 text_auto='.1f')
-
-    # 設定 Y 軸範圍 (770~850)
     fig.update_yaxes(range=[770, 850])
-
-    # 新增三條對照標準線 (對齊你的報告截圖標準)
-    fig.add_hline(y=788, line_dash="dash", line_color="green", annotation_text="綠燈等級 (788mm)", annotation_position="top left")
-    fig.add_hline(y=782, line_dash="dash", line_color="orange", annotation_text="黃燈等級 (782mm)", annotation_position="top left")
-    fig.add_hline(y=775, line_dash="dash", line_color="red", annotation_text="紅燈等級 (775mm)", annotation_position="top left")
-
-    # 優化 X 軸顯示
+    
+    # 🌟 優化 3.2: 拿掉 annotation_text 避免壓線，純顯示輔助虛線
+    fig.add_hline(y=788, line_dash="dash", line_color="green")
+    fig.add_hline(y=782, line_dash="dash", line_color="orange")
+    fig.add_hline(y=775, line_dash="dash", line_color="red")
     fig.update_layout(xaxis_type='category', xaxis_tickangle=-45)
-
     return fig
 
+# ==========================================
+# 💾 核心執行與網頁記憶體 (Session State)
+# ==========================================
+# 🌟 優化 2.1: 準備記憶體，防止下載時網頁重整消失
+if "is_processed" not in st.session_state:
+    st.session_state.is_processed = False
 
-# --- 執行邏輯 ---
 if uploaded_files:
-    if st.button("🚀 開始提取資料"):
-        with st.spinner('資料提取中...'):
+    if st.button("🚀 開始提取資料", use_container_width=True):
+        start_time = time.time() # 🌟 優化 2.2: 開始計時
+        with st.spinner('資料高速提取中...'):
             results_371, results_381 = [], []
             progress_bar = st.progress(0)
 
             for i, file in enumerate(uploaded_files):
                 if file.name.startswith("~$"): continue
-                
-                # 讀取 Excel
                 df_raw = pd.read_excel(file, header=None, engine='calamine')
-                file_data = {"車號": None, "工單編號": None, "工項名稱": None, "檢查結束日期": None}
+                file_data = {"車號": None, "工單編號": None, "工項名稱": None, "檢查結束日期": None, "檢修里程": None}
 
-                # 提取表頭資訊
                 for row_idx in range(len(df_raw)):
                     for col_idx in range(len(df_raw.columns)):
                         cell = str(df_raw.iloc[row_idx, col_idx]).strip()
                         if cell == "工單編號": file_data["工單編號"] = df_raw.iloc[row_idx, col_idx + 1]
                         elif cell == "車號/最小成本單位": file_data["車號"] = str(df_raw.iloc[row_idx, col_idx + 1]).strip()
-                        elif cell == "工項名稱": file_data["工項名稱"] = df_raw.iloc[row_idx, col_idx + 1]
+                        elif cell == "工項名稱": 
+                            raw_name = str(df_raw.iloc[row_idx, col_idx + 1])
+                            # 🌟 優化 1.3: 正則表達式抓取 "XX檢(0XX)"
+                            match = re.search(r'_([^_]+\([^)]+\))', raw_name)
+                            file_data["工項名稱"] = match.group(1) if match else raw_name
                         elif cell == "檢查結束日期":
                             raw_date = df_raw.iloc[row_idx, col_idx + 1]
-                            file_data["檢查結束日期"] = raw_date.strftime("%m/%d") if isinstance(raw_date, datetime) else raw_date
+                            try:
+                                # 🌟 優化 1.1: 強制轉換為 MM/DD
+                                file_data["檢查結束日期"] = pd.to_datetime(raw_date).strftime("%m/%d")
+                            except:
+                                file_data["檢查結束日期"] = raw_date
+                        elif cell in ["檢修里程", "里程", "目前里程"]:
+                            val = df_raw.iloc[row_idx, col_idx + 1]
+                            try:
+                                # 🌟 優化 1.2: 抓取里程並轉為整數 (移除可能的逗號)
+                                file_data["檢修里程"] = int(float(str(val).replace(',', '')))
+                            except:
+                                file_data["檢修里程"] = val
 
-                # 提取數值資料
                 df_table = pd.read_excel(file, header=2, engine='calamine')
                 check_cols = [c for c in df_table.columns if '檢查結果' in str(c)]
                 if check_cols:
-                    target_rows = df_table[df_table['進階分類'].str.contains(r'車輪組-[Cc]|斷電[Cc]|頂昇斷電[Dd]|車下-[Cc]|頂昇斷電-[Aa]|車下-[Bb]', regex=True, na=False) & 
-                                           df_table['檢查項目'].str.contains(r'直徑|輪徑', regex=True, na=False)]
+                    target_rows = df_table[df_table['進階分類'].str.contains(r'車輪組-[Cc]|斷電[Cc]|頂昇斷電[Dd]|車下-[Cc]|頂昇斷電[Aa]|車下-[Bb]', regex=True, na=False) & 
+                                           df_table['檢查項目'].str.contains(r'車輪直徑|車輪輪徑', regex=True, na=False)]
                     for _, row in target_rows.iterrows():
                         try:
                             val = float(row[check_cols[0]])
@@ -174,25 +194,65 @@ if uploaded_files:
                 elif '381' in file.name: results_381.append(file_data)
                 progress_bar.progress((i + 1) / len(uploaded_files))
 
-            # 🌟 顯示結果
-            for model_name, data in [("371型", results_371), ("381型", results_381)]:
-                res_df = process_data(data)
-                if res_df is not None:
-                    st.subheader(f"📊 {model_name} 提取結果預覽")
-                    st.dataframe(res_df)
-                    
-                    buf = io.BytesIO()
-                    res_df.to_excel(buf, index=False)
-                    st.download_button(
-                        label=f"📥 下載 {model_name} 輪徑提取表",
-                        data=buf.getvalue(),
-                        file_name=f"{model_name}_提取結果_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.ms-excel"
-                    )
+            # 將算好的資料存入記憶體
+            st.session_state.df_371 = process_data(results_371)
+            st.session_state.df_381 = process_data(results_381)
+            st.session_state.time_msg = f"✅ 成功處理 {len(uploaded_files)} 份檔案，共耗時 {time.time() - start_time:.1f} 秒！"
+            st.session_state.is_processed = True
+            st.rerun() # 重新整理網頁，進入顯示階段
 
-                    # 🌟 新增：在下載按鈕下方顯示圖表
-                    fig = create_min_wheel_chart(res_df, model_name)
-                    if fig:
-                        st.plotly_chart(fig, use_container_width=True)
+# ==========================================
+# 📊 顯示與下載階段 (從記憶體讀取)
+# ==========================================
+if st.session_state.is_processed:
+    st.success(st.session_state.time_msg) # 顯示計時結果
+    
+    tab1, tab2 = st.tabs(["🚆 371型 提取結果", "🚆 381型 提取結果"])
+    
+    def render_result_tab(raw_df, model_name):
+        if raw_df is not None and not raw_df.empty:
+            # 🌟 優化 3.3: 計算紅黃綠燈數量與佔比
+            raw_df['本車最小輪徑'] = pd.to_numeric(raw_df['本車最小輪徑'], errors='coerce')
+            valid_df = raw_df.dropna(subset=['本車最小輪徑'])
+            total_cars = len(valid_df)
+            
+            if total_cars > 0:
+                green = len(valid_df[valid_df['本車最小輪徑'] >= 788])
+                yellow = len(valid_df[(valid_df['本車最小輪徑'] >= 782) & (valid_df['本車最小輪徑'] < 788)])
+                red = len(valid_df[valid_df['本車最小輪徑'] < 782])
+                
+                # 左右分割畫面：左邊圖表，右邊佔比面板
+                col_chart, col_stats = st.columns([7, 3])
+                with col_chart:
+                    fig = create_min_wheel_chart(raw_df, model_name)
+                    st.plotly_chart(fig, use_container_width=True)
+                with col_stats:
+                    st.markdown("<br><br>", unsafe_allow_html=True) # 往下推一點對齊
+                    st.markdown(f"### 🚥 磨耗等級佔比")
+                    st.markdown(f"**🟢 綠燈 (788~850mm):** {green}EMU ({green/total_cars*100:.1f}%)")
+                    st.markdown(f"**🟡 黃燈 (782~787mm):** {yellow}EMU ({yellow/total_cars*100:.1f}%)")
+                    st.markdown(f"**🔴 紅燈 (775~781mm):** {red}EMU ({red/total_cars*100:.1f}%)")
+                    if red > 0: st.error(f"⚠️ 注意：有 {red} EMU低於紅燈下限！")
+            
+            st.divider()
+            
+            # 🌟 優化 1.4 & 1.5: 變形為 3x4 結構並顯示表格
+            ui_df = transform_to_3_rows(raw_df)
+            st.subheader(f"📋 {model_name} 3x4結構提取表")
+            st.dataframe(ui_df)
+            
+            # 🌟 優化 1.6: 下載按鈕 (檔名加上今日日期)
+            buf = io.BytesIO()
+            ui_df.to_excel(buf, index=False)
+            today_str = datetime.now().strftime('%Y%m%d')
+            st.download_button(
+                label=f"📥 下載 {model_name} 提取表 (Excel)",
+                data=buf.getvalue(),
+                file_name=f"{model_name}_提取表_{today_str}.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+        else:
+            st.info(f"本次上傳未包含 {model_name} 的資料。")
 
-            st.success("✅ 所有檔案處理完成！")
+    with tab1: render_result_tab(st.session_state.df_371, "371型")
+    with tab2: render_result_tab(st.session_state.df_381, "381型")
