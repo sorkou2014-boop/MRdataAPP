@@ -8,16 +8,16 @@ from datetime import datetime
 import plotly.express as px 
 
 # 🌟 1. 設定網頁標題與大版面
-st.set_page_config(page_title="月報數據自動化提取", layout="wide")
+st.set_page_config(page_title="月報數據資料自動提取", layout="wide")
 
 # ==========================================
 # 🎛️ 未來擴充：側邊欄系統模式切換
 # ==========================================
 st.sidebar.header("⚙️ 系統模式切換")
-app_mode = st.sidebar.radio("請選擇作業模式", ["🔍 預檢輪徑提取", "🛠️ 其他資料提取 (開發中)"])
+app_mode = st.sidebar.radio("請選擇作業模式", ["🔍 輪徑提取", "🛠️ 其他資料提取 (開發中)"])
 
 st.sidebar.divider()
-st.sidebar.info("📌 目前功能：\n1. 輪徑資料與檢修里程提取\n2. 輪徑最小值與佔比計算\n3. 3x4 結構化報表產出")
+st.sidebar.info("📌 更新日期(版本):2026/5/17(V2.0.0)\n目前功能：\n1. 輪徑資料(軸比較)與檢修工單、日期、里程提取\n2. 輪徑最小值計算與圖表產出(佔比)")
 
 # 如果選擇未開發功能，直接擋下
 if app_mode == "🛠️ 其他資料提取 (開發中)":
@@ -28,8 +28,8 @@ if app_mode == "🛠️ 其他資料提取 (開發中)":
 # ==========================================
 # 👇 預檢輪徑提取 系統主程式
 # ==========================================
-st.title("📊 月報數據自動化提取 (預檢輪徑提取)")
-st.markdown("請上傳從行動檢修平台下載的 ISO 表單 (Excel)，系統將自動提取、運算並產生 3x4 結構化提取總表。")
+st.title("📊 月報數據資料自動提取 (輪徑提取)")
+st.markdown("請上傳從行動檢修平台下載的 ISO 表單 (Excel)，系統將自動提取、運算、製作圖表並產生提取總表。")
 
 # 🌟 檔案上傳區
 uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
@@ -182,8 +182,8 @@ if uploaded_files:
                 df_table = pd.read_excel(file, header=2, engine='calamine')
                 check_cols = [c for c in df_table.columns if '檢查結果' in str(c)]
                 if check_cols:
-                    target_rows = df_table[df_table['進階分類'].str.contains(r'車輪組-[Cc]|斷電[Cc]|頂昇斷電[Dd]|車下-[Cc]|頂昇斷電[Aa]|車下-[Bb]', regex=True, na=False) & 
-                                           df_table['檢查項目'].str.contains(r'車輪直徑|車輪輪徑', regex=True, na=False)]
+                    target_rows = df_table[df_table['進階分類'].str.contains(r'車輪組-[Cc]|斷電[Cc]|頂昇斷電[Dd]|車下-[Cc]|頂昇斷電[Aa]|車下-[Bb]|里程', regex=True, na=False) & 
+                                           df_table['檢查項目'].str.contains(r'車輪直徑|車輪輪徑|里程', regex=True, na=False)]
                     for _, row in target_rows.iterrows():
                         try:
                             val = float(row[check_cols[0]])
@@ -238,7 +238,7 @@ if st.session_state.is_processed:
             
             # 🌟 優化 1.4 & 1.5: 變形為 3x4 結構並顯示表格
             ui_df = transform_to_3_rows(raw_df)
-            st.subheader(f"📋 {model_name} 3x4結構提取表")
+            st.subheader(f"📋 {model_name} 資料提取表")
             st.dataframe(ui_df)
             
             # 🌟 優化 1.6: 下載按鈕 (檔名加上今日日期)
