@@ -41,7 +41,7 @@ st.set_page_config(page_title="月報數據自動化提取", layout="wide")
 
 # 🌟 主頁面標題
 st.title("📊 月報數據自動化提取")
-st.markdown("請上傳從行動檢修平台下載的 Excel 原始表單，系統將自動提取、運算並產生提取總表。")
+st.markdown("請上傳從行動檢修平台下載ISO表單( Excel) 原始表單，系統將自動提取、運算並產生提取總表。")
 
 # 🌟 側邊欄資訊
 st.sidebar.header("⚙️ 系統資訊")
