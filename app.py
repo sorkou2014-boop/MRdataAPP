@@ -5,10 +5,10 @@ import re
 import time
 from datetime import datetime
 import plotly.express as px 
-# from streamlit_oauth import OAuth2Component  <-- 要用 Google 登入時再把這行註解拿掉
+from streamlit_oauth import OAuth2Component  <-- 要用 Google 登入時再把這行註解拿掉
 
 # 🌟 1. 設定網頁標題與大版面
-st.set_page_config(page_title="月報數據自動化系統", layout="wide")
+st.set_page_config(page_title="月報數據提取系統", layout="wide")
 
 # ==========================================
 # 🛠️ 共用資料處理函式區 (預先載入引擎)
@@ -95,22 +95,22 @@ def create_min_wheel_chart(df, model_name):
 # 🔐 畫面一：首頁暨登入畫面
 # ==========================================
 if "token" not in st.session_state:
-    st.markdown("<h1 style='text-align: center; margin-top: 10vh;'>🚂 月報數據自動化系統</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-top: 10vh;'>🚂 月報數據提取系統</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray; margin-bottom: 5vh;'>請先登入以繼續使用系統功能</p>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([4, 3, 4])
     with col2:
-        st.info("🔒 系統已啟用企業級安全防護")
+        st.info("🔒 系統需授權使用")
         
         # --- 真實的 Google SSO 程式碼 (要上線時把這邊的註解拿掉) ---
-        # CLIENT_ID = st.secrets["google_oauth"]["client_id"]
-        # CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
-        # REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
-        # oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
-        # result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
-        # if result and "token" in result:
-        #     st.session_state.token = result.get("token")
-        #     st.rerun()
+        CLIENT_ID = st.secrets["google_oauth"]["client_id"]
+        CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
+        REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+        oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
+        result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
+        if result and "token" in result:
+             st.session_state.token = result.get("token")
+             st.rerun()
         
         # --- 測試用的模擬登入按鈕 (測試完畢可刪除) ---
         if st.button("🚀 (開發測試) 點此模擬登入", use_container_width=True):
@@ -134,9 +134,9 @@ st.divider()
 
 # 側邊欄：功能選單
 st.sidebar.header("⚙️ 系統功能導覽")
-app_mode = st.sidebar.radio("請選擇作業模式", ["🏠 系統總覽 (Home)", "🔍 預檢輪徑提取", "🛠️ 修護資料提取 (規劃中)"])
+app_mode = st.sidebar.radio("請選擇作業模式", ["🏠 系統總覽 (Home)", "🔍 輪徑資料提取", "🛠️ 其他資料提取 (規劃中)"])
 st.sidebar.divider()
-st.sidebar.info("📌 目前上線功能：\n1. 輪徑/檢修里程自動提取\n2. 輪徑最小值與佔比計算\n3. 3x4 結構化報表產出")
+st.sidebar.info("📌 目前上線功能：\n1. 輪徑資料提取\n2. 輪徑(各軸)最小值及佔比圖表計算")
 
 # ==========================================
 # 🚀 畫面路由：根據使用者的選擇顯示對應功能
@@ -149,13 +149,13 @@ if app_mode == "🏠 系統總覽 (Home)":
     
     col1, col2 = st.columns(2)
     with col1:
-        st.info("#### 🔍 預檢輪徑提取 (已上線)\n上傳行動檢修平台之 ISO 表單，系統將自動為您完成輪徑提取、最小值判斷、產生圖表與 3x4 格式報表。")
+        st.info("#### 🔍 輪徑資料提取 (已上線)\n上傳行動檢修平台之 ISO 表單(EXCEL)，系統將自動為您完成輪徑提取、最小值判斷、產生圖表...等。")
     with col2:
-        st.warning("#### 🛠️ 修護資料提取 (建置中)\n未來擴充功能，將針對其他修護項目的表單進行專屬的客製化資料提取。")
+        st.warning("#### 🛠️ 其他資料提取 (規劃中)\n未來擴充功能，將針對其他資料的表單進行客製化的資料提取。")
 
 # --- 模式 B：修護資料提取 (開發中) ---
-elif app_mode == "🛠️ 修護資料提取 (規劃中)":
-    st.title("🛠️ 修護資料提取系統")
+elif app_mode == "🛠️ 其他資料提取 (規劃中)":
+    st.title("🛠️ 其他資料提取系統")
     st.info("🚧 此模組正在規劃建置中，未來將支援不同資料來源的格式，敬請期待！")
 
 # --- 模式 C：預檢輪徑提取 (主要核心功能) ---
@@ -260,7 +260,7 @@ elif app_mode == "🔍 預檢輪徑提取":
                 
                 st.divider()
                 ui_df = transform_to_3_rows(raw_df)
-                st.subheader(f"📋 {model_name} 3x4結構提取表")
+                st.subheader(f"📋 {model_name} 提取表")
                 st.dataframe(ui_df)
                 
                 buf = io.BytesIO()
