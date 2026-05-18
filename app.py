@@ -5,7 +5,7 @@ import re
 import time
 from datetime import datetime
 import plotly.express as px 
-from streamlit_oauth import OAuth2Component  <-- 要用 Google 登入時再把這行註解拿掉
+# from streamlit_oauth import OAuth2Component  <-- 要用 Google 登入時再把這行註解拿掉
 
 # 🌟 1. 設定網頁標題與大版面
 st.set_page_config(page_title="月報數據提取系統", layout="wide")
@@ -102,22 +102,11 @@ if "token" not in st.session_state:
     with col2:
         st.info("🔒 系統需授權使用")
         
-        # --- 真實的 Google SSO 程式碼 (要上線時把這邊的註解拿掉) ---
-        CLIENT_ID = st.secrets["google_oauth"]["client_id"]
-        CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
-        REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
-        oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
-        result = oauth2.authorize_button("使用 Google 帳號登入", "https://www.google.com.tw/favicon.ico", REDIRECT_URI, "openid email profile")
-        if result and "token" in result:
-             st.session_state.token = result.get("token")
-             st.rerun()
-        
-        # --- 測試用的模擬登入按鈕 (測試完畢可刪除) ---
         if st.button("🚀 (開發測試) 點此模擬登入", use_container_width=True):
             st.session_state.token = "dev_mode_token"
             st.rerun()
             
-    st.stop() # 🛑 沒登入就強制停在這裡，形成獨立的登入首頁
+    st.stop() 
 
 # ==========================================
 # 🏠 畫面二：登入後的大廳與導覽列
@@ -128,7 +117,7 @@ with status_col:
     st.success("✅ 身分驗證成功，歡迎使用系統！")
 with logout_col:
     if st.button("🚪 登出系統"):
-        st.session_state.clear() # 清空包含 token 與暫存的所有資料
+        st.session_state.clear() 
         st.rerun()
 st.divider()
 
@@ -137,6 +126,11 @@ st.sidebar.header("⚙️ 系統功能導覽")
 app_mode = st.sidebar.radio("請選擇作業模式", ["🏠 系統總覽 (Home)", "🔍 輪徑資料提取", "🛠️ 其他資料提取 (規劃中)"])
 st.sidebar.divider()
 st.sidebar.info("📌 目前上線功能：\n1. 輪徑資料提取\n2. 輪徑(各軸)最小值及佔比圖表計算")
+
+# 🌟 新增：在側邊欄最下方加入版本資訊
+st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True) # 往下推一點，排版更好看
+st.sidebar.caption("🔖 **系統版本：V 2.0.0**")
+st.sidebar.caption("📅 **更新日期：2026/05/19**")
 
 # ==========================================
 # 🚀 畫面路由：根據使用者的選擇顯示對應功能
@@ -159,17 +153,15 @@ elif app_mode == "🛠️ 其他資料提取 (規劃中)":
     st.info("🚧 此模組正在規劃建置中，未來將支援不同資料來源的格式，敬請期待！")
 
 # --- 模式 C：預檢輪徑提取 (主要核心功能) ---
-elif app_mode == "🔍 預檢輪徑提取":
+elif app_mode == "🔍 輪徑資料提取":
     st.title("📊 月報數據自動化提取 (預檢)")
     st.markdown("請上傳從行動檢修平台下載的 ISO 表單(Excel)，系統將自動提取、運算並產生提取總表。")
     
     uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
 
-    # 確保記憶體存在
     if "is_processed" not in st.session_state:
         st.session_state.is_processed = False
 
-    # 執行提取邏輯
     if uploaded_files:
         if st.button("🚀 開始提取資料", use_container_width=True):
             start_time = time.time()
@@ -196,14 +188,11 @@ elif app_mode == "🔍 預檢輪徑提取":
                                 try: file_data["檢查結束日期"] = pd.to_datetime(raw_date).strftime("%m/%d")
                                 except: file_data["檢查結束日期"] = raw_date
                                 
-                            # 🌟 強化的里程提取雷達
                             elif "里程" in cell:
                                 val = df_raw.iloc[row_idx, col_idx + 1]
-                                # 如果旁邊那格是空的，可能因為合併儲存格在下一格
                                 if (pd.isna(val) or str(val).strip() == "") and col_idx + 2 < len(df_raw.columns):
                                     val = df_raw.iloc[row_idx, col_idx + 2]
                                 try:
-                                    # 用正則表達式剔除所有非數字字元 (例如 'km', ',')
                                     clean_val = re.sub(r'[^\d]', '', str(val))
                                     if clean_val: file_data["檢修里程"] = int(clean_val)
                                 except: file_data["檢修里程"] = val
@@ -229,7 +218,6 @@ elif app_mode == "🔍 預檢輪徑提取":
                 st.session_state.is_processed = True
                 st.rerun()
 
-    # --- 提取完畢後的結果顯示區 (從記憶體呼叫) ---
     if st.session_state.get("is_processed"):
         st.success(st.session_state.time_msg)
         
