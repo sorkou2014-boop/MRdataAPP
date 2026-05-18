@@ -5,7 +5,7 @@ import re
 import time
 from datetime import datetime
 import plotly.express as px 
-# from streamlit_oauth import OAuth2Component  <-- 要用 Google 登入時再把這行註解拿掉
+from streamlit_oauth import OAuth2Component  # 🌟 Google SSO 套件
 
 # 🌟 1. 設定網頁標題與大版面
 st.set_page_config(page_title="月報數據提取系統", layout="wide")
@@ -92,21 +92,56 @@ def create_min_wheel_chart(df, model_name):
     return fig
 
 # ==========================================
-# 🔐 畫面一：首頁暨登入畫面
+# 🔐 畫面一：首頁暨雙軌登入畫面
 # ==========================================
 if "token" not in st.session_state:
-    st.markdown("<h1 style='text-align: center; margin-top: 10vh;'>🚂 月報數據提取系統</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: gray; margin-bottom: 5vh;'>請先登入以繼續使用系統功能</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-top: 5vh;'>🚂 月報數據提取系統</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: gray; margin-bottom: 5vh;'>請選擇登入方式以繼續使用系統</p>", unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([4, 3, 4])
+    col1, col2, col3 = st.columns([3, 4, 3]) # 調整中間欄位稍微寬一點
     with col2:
-        st.info("🔒 系統需授權使用")
-        
-        if st.button("🚀 (開發測試) 點此模擬登入", use_container_width=True):
-            st.session_state.token = "dev_mode_token"
-            st.rerun()
+        # --- 登入方式 A：Google 企業認證 ---
+        st.info("💼 **正式登入 (Google 授權)**")
+        try:
+            CLIENT_ID = st.secrets["google_oauth"]["client_id"]
+            CLIENT_SECRET = st.secrets["google_oauth"]["client_secret"]
+            REDIRECT_URI = st.secrets["google_oauth"]["redirect_uri"]
+            AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+            TOKEN_URL = "https://oauth2.googleapis.com/token"
+            REVOKE_TOKEN_URL = "https://oauth2.googleapis.com/revoke"
             
-    st.stop() 
+            oauth2 = OAuth2Component(CLIENT_ID, CLIENT_SECRET, AUTHORIZE_URL, TOKEN_URL, REVOKE_TOKEN_URL)
+            result = oauth2.authorize_button(
+                name="使用 Google 帳號登入", 
+                icon="https://www.google.com.tw/favicon.ico", 
+                redirect_uri=REDIRECT_URI, 
+                scope="openid email profile",
+                key="google_login"
+            )
+            if result and "token" in result:
+                st.session_state.token = result.get("token")
+                st.rerun()
+        except Exception as e:
+            st.error("⚠️ 無法載入 Google 登入模組。請確認是否已設定金鑰。")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.divider()
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # --- 登入方式 B：測試階段專用通道 ---
+        st.warning("🛠️ **測試階段專用登入**")
+        # 🌟 在這裡設定你的通關密語 (目前預設為 test1234)
+        test_passcode = "123" 
+        
+        user_input = st.text_input("請輸入測試授權碼：", type="password")
+        if st.button("🚀 確認送出", use_container_width=True):
+            if user_input == test_passcode:
+                st.session_state.token = "dev_mode_token"
+                st.rerun()
+            elif user_input != "":
+                st.error("❌ 授權碼錯誤，請重新輸入或使用 Google 登入。")
+            
+    st.stop() # 🛑 阻擋未登入者往下執行
 
 # ==========================================
 # 🏠 畫面二：登入後的大廳與導覽列
@@ -125,18 +160,17 @@ st.divider()
 st.sidebar.header("⚙️ 系統功能導覽")
 app_mode = st.sidebar.radio("請選擇作業模式", ["🏠 系統總覽 (Home)", "🔍 輪徑資料提取", "🛠️ 其他資料提取 (規劃中)"])
 st.sidebar.divider()
-st.sidebar.info("📌 目前上線功能：\n1. 輪徑資料提取\n2. 輪徑(各軸)最小值及佔比圖表計算")
+st.sidebar.info("📌 目前上線功能：\n1. 輪徑與里程資料提取、輪徑(各軸)最小值及佔比圖表計算")
 
-# 🌟 新增：在側邊欄最下方加入版本資訊
-st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True) # 往下推一點，排版更好看
-st.sidebar.caption("🔖 **系統版本：V 2.0.0**")
+# 🌟 版本資訊
+st.sidebar.markdown("<br><br><br>", unsafe_allow_html=True) 
+st.sidebar.caption("🔖 **系統版本：V 2.1.0**")
 st.sidebar.caption("📅 **更新日期：2026/05/19**")
 
 # ==========================================
 # 🚀 畫面路由：根據使用者的選擇顯示對應功能
 # ==========================================
 
-# --- 模式 A：系統總覽大廳 ---
 if app_mode == "🏠 系統總覽 (Home)":
     st.title("🏠 歡迎來到系統總覽")
     st.markdown("👈 **請從左側導覽列選擇您要執行的功能。**")
@@ -147,14 +181,12 @@ if app_mode == "🏠 系統總覽 (Home)":
     with col2:
         st.warning("#### 🛠️ 其他資料提取 (規劃中)\n未來擴充功能，將針對其他資料的表單進行客製化的資料提取。")
 
-# --- 模式 B：修護資料提取 (開發中) ---
 elif app_mode == "🛠️ 其他資料提取 (規劃中)":
     st.title("🛠️ 其他資料提取系統")
     st.info("🚧 此模組正在規劃建置中，未來將支援不同資料來源的格式，敬請期待！")
 
-# --- 模式 C：預檢輪徑提取 (主要核心功能) ---
 elif app_mode == "🔍 輪徑資料提取":
-    st.title("📊 月報數據自動化提取 (預檢)")
+    st.title("📊 月報數據資料提取 (輪徑)")
     st.markdown("請上傳從行動檢修平台下載的 ISO 表單(Excel)，系統將自動提取、運算並產生提取總表。")
     
     uploaded_files = st.file_uploader("📂 拖曳或選擇多份 Excel 檔案", type=["xlsx"], accept_multiple_files=True)
@@ -187,19 +219,25 @@ elif app_mode == "🔍 輪徑資料提取":
                                 raw_date = df_raw.iloc[row_idx, col_idx + 1]
                                 try: file_data["檢查結束日期"] = pd.to_datetime(raw_date).strftime("%m/%d")
                                 except: file_data["檢查結束日期"] = raw_date
-                                
-                            elif "里程" in cell:
-                                val = df_raw.iloc[row_idx, col_idx + 1]
-                                if (pd.isna(val) or str(val).strip() == "") and col_idx + 2 < len(df_raw.columns):
-                                    val = df_raw.iloc[row_idx, col_idx + 2]
-                                try:
-                                    clean_val = re.sub(r'[^\d]', '', str(val))
-                                    if clean_val: file_data["檢修里程"] = int(clean_val)
-                                except: file_data["檢修里程"] = val
 
+                    # 提取下半部表格區 (包含輪徑與里程)
                     df_table = pd.read_excel(file, header=2, engine='calamine')
                     check_cols = [c for c in df_table.columns if '檢查結果' in str(c)]
                     if check_cols:
+                        # 從表格區尋找「檢修里程」
+                        mileage_rows = df_table[df_table['檢查項目'].str.contains('里程', na=False)]
+                        if not mileage_rows.empty:
+                            for _, m_row in mileage_rows.iterrows():
+                                m_val = m_row[check_cols[0]]
+                                if pd.notna(m_val) and str(m_val).strip() != "":
+                                    try:
+                                        clean_val = re.sub(r'[^\d]', '', str(m_val))
+                                        if clean_val: 
+                                            file_data["檢修里程"] = int(clean_val)
+                                            break
+                                    except: pass
+
+                        # 尋找輪徑資料
                         target_rows = df_table[df_table['進階分類'].str.contains(r'車輪組-[Cc]|斷電[Cc]|頂昇斷電[Dd]|車下-[Cc]|頂昇斷電[Aa]|車下-[Bb]', regex=True, na=False) & 
                                                df_table['檢查項目'].str.contains(r'車輪直徑|車輪輪徑', regex=True, na=False)]
                         for _, row in target_rows.iterrows():
